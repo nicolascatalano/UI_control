@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor, QPalette
 import sys
 import os
+import datetime
 
 # Agregar directorio actual al path para imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -73,6 +74,12 @@ class MainWindow(QMainWindow):
         
         # Conexión SSH
         self.ssh = None
+        self.datetime_configured = None  # Almacena fecha/hora configurada
+        
+        # Estados de botones toggle
+        self.acquisition_enabled = False
+        self.streaming_active = False
+        
         self.connect_ssh()
         
         # Setup UI
@@ -96,6 +103,9 @@ class MainWindow(QMainWindow):
             self.ssh = sshClient.ShellHandler()
             if self.ssh.isConnected:
                 print(f"✓ Conectado a CIAA (192.168.0.22)")
+                
+                # Configurar fecha y hora automáticamente
+                self.set_ciaa_datetime()
             else:
                 print("✗ No se pudo conectar a CIAA")
                 QMessageBox.warning(
@@ -108,6 +118,67 @@ class MainWindow(QMainWindow):
             print(f"Error SSH: {e}")
             self.ssh = None
             QMessageBox.critical(self, 'Error', f'Error conectando a CIAA:\n{e}')
+    
+    def set_ciaa_datetime(self):
+        """Configura la fecha y hora actual en la CIAA vía SSH"""
+        if not self.ssh or not self.ssh.isConnected:
+            print("✗ No hay conexión SSH para configurar fecha/hora")
+            return
+        
+        try:
+            now = datetime.datetime.now()
+            # Formato: 'YYYY-MM-DD HH:MM:SS'
+            date_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            print(f"[INFO] Configurando fecha/hora en CIAA: {date_str}")
+            
+            cmd = f'date -s "{date_str}"'
+            result = self.ssh.execute(cmd)
+            
+            # Parsear resultado
+            if isinstance(result, tuple) and len(result) > 1:
+                stdout_lines = result[1]
+                if stdout_lines:
+                    configured_time = stdout_lines[0].strip() if isinstance(stdout_lines[0], str) else date_str
+                    print(f"[OK] Fecha/hora configurada: {configured_time}")
+                    self.datetime_configured = now
+                    
+                    # Actualizar UI si ya existe el label
+                    if hasattr(self, 'status_label'):
+                        self.update_connection_status()
+                else:
+                    print(f"[OK] Comando ejecutado: {date_str}")
+                    self.datetime_configured = now
+            else:
+                print(f"[OK] Fecha/hora configurada: {date_str}")
+                self.datetime_configured = now
+                
+        except Exception as e:
+            print(f"[ERROR] No se pudo configurar fecha/hora: {e}")
+            self.datetime_configured = None
+    
+    def update_connection_status(self):
+        """Actualiza el label de estado de conexión con información de fecha/hora"""
+        if not hasattr(self, 'status_label'):
+            return
+        
+        if self.ssh and self.ssh.isConnected:
+            self.status_label.setText("✓ Conectada")
+            self.status_label.setStyleSheet("color: green; font-size: 14px; font-weight: bold;")
+            
+            # Actualizar label de fecha/hora
+            if hasattr(self, 'datetime_label') and self.datetime_configured:
+                datetime_str = self.datetime_configured.strftime("%Y-%m-%d %H:%M:%S")
+                self.datetime_label.setText(f"Fecha/Hora configurada: {datetime_str}")
+                self.datetime_label.setStyleSheet("color: #27ae60; font-size: 11px;")
+            elif hasattr(self, 'datetime_label'):
+                self.datetime_label.setText("⚠ Fecha/hora no configurada")
+                self.datetime_label.setStyleSheet("color: #e67e22; font-size: 11px;")
+        else:
+            self.status_label.setText("✗ Desconectada")
+            self.status_label.setStyleSheet("color: red; font-size: 14px; font-weight: bold;")
+            if hasattr(self, 'datetime_label'):
+                self.datetime_label.setText("")
     
     def init_ui(self):
         """Inicializa la interfaz gráfica"""
@@ -129,11 +200,22 @@ class MainWindow(QMainWindow):
         # === Sección: Estado de Conexión ===
         connection_status = QGroupBox("Conexión SSH")
         conn_layout = QVBoxLayout()
+        
+        # Label de estado de conexión
         status_text = "✓ Conectada" if (self.ssh and self.ssh.isConnected) else "✗ Desconectada"
         status_color = "green" if (self.ssh and self.ssh.isConnected) else "red"
-        status_label = QLabel(status_text)
-        status_label.setStyleSheet(f"color: {status_color}; font-size: 14px; font-weight: bold;")
-        conn_layout.addWidget(status_label)
+        self.status_label = QLabel(status_text)
+        self.status_label.setStyleSheet(f"color: {status_color}; font-size: 14px; font-weight: bold;")
+        conn_layout.addWidget(self.status_label)
+        
+        # Label de fecha/hora configurada
+        self.datetime_label = QLabel("")
+        self.datetime_label.setStyleSheet("color: #2c3e50; font-size: 11px;")
+        conn_layout.addWidget(self.datetime_label)
+        
+        # Actualizar con información de fecha/hora si ya está disponible
+        self.update_connection_status()
+        
         connection_status.setLayout(conn_layout)
         controls_layout.addWidget(connection_status)
         
@@ -229,6 +311,15 @@ class MainWindow(QMainWindow):
         # === Botones de Acción ===
         buttons_layout = QVBoxLayout()
         
+        # Botón SSH Connect/Disconnect
+        self.ssh_btn = QPushButton("🔌 DESCONECTAR SSH")
+        self.ssh_btn.setFont(QFont("Utopia", 11, QFont.Bold))
+        self.update_ssh_button()
+        self.ssh_btn.clicked.connect(self.toggle_ssh_connection)
+        buttons_layout.addWidget(self.ssh_btn)
+        
+        buttons_layout.addSpacing(10)
+        
         # Botón Reset
         reset_btn = QPushButton("🔄 RESET System")
         reset_btn.setFont(QFont("Utopia", 12, QFont.Bold))
@@ -236,26 +327,19 @@ class MainWindow(QMainWindow):
         reset_btn.clicked.connect(self.reset_system)
         buttons_layout.addWidget(reset_btn)
         
-        # Botón Enable
-        enable_btn = QPushButton("▶ ENABLE Acquisition")
-        enable_btn.setFont(QFont("Utopia", 12, QFont.Bold))
-        enable_btn.setStyleSheet("background-color: #4ECDC4; color: white; padding: 10px;")
-        enable_btn.clicked.connect(self.enable_system)
-        buttons_layout.addWidget(enable_btn)
+        # Botón Enable/Disable (toggle)
+        self.acquisition_btn = QPushButton("▶ ENABLE Acquisition")
+        self.acquisition_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        self.update_acquisition_button()
+        self.acquisition_btn.clicked.connect(self.toggle_acquisition)
+        buttons_layout.addWidget(self.acquisition_btn)
         
-        # Botón Disable
-        disable_btn = QPushButton("⏸ DISABLE Acquisition")
-        disable_btn.setFont(QFont("Utopia", 12, QFont.Bold))
-        disable_btn.setStyleSheet("background-color: #95A5A6; color: white; padding: 10px;")
-        disable_btn.clicked.connect(self.disable_system)
-        buttons_layout.addWidget(disable_btn)
-        
-        # Botón Launch UDP Streaming
-        launch_btn = QPushButton("🚀 LAUNCH UDP Streaming")
-        launch_btn.setFont(QFont("Utopia", 12, QFont.Bold))
-        launch_btn.setStyleSheet("background-color: #2ECC71; color: white; padding: 15px;")
-        launch_btn.clicked.connect(self.launch_streaming)
-        buttons_layout.addWidget(launch_btn)
+        # Botón Launch/Stop UDP Streaming (toggle)
+        self.streaming_btn = QPushButton("🚀 LAUNCH UDP Streaming")
+        self.streaming_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        self.update_streaming_button()
+        self.streaming_btn.clicked.connect(self.toggle_streaming)
+        buttons_layout.addWidget(self.streaming_btn)
         
         # Botón Calibración IDELAY
         calibrate_btn = QPushButton("🔧 Calibrar IDELAY (startup.elf)")
@@ -383,47 +467,131 @@ class MainWindow(QMainWindow):
         except ValueError:
             self.log_message("ERROR: Frecuencia de oscilador local inválida")
     
+    def toggle_ssh_connection(self):
+        """Conectar o desconectar SSH"""
+        if self.ssh and self.ssh.isConnected:
+            # Desconectar
+            reply = QMessageBox.question(
+                self,
+                'Desconectar SSH',
+                '¿Desea desconectar la sesión SSH?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                try:
+                    self.ssh.ssh.close()
+                    self.ssh = None
+                    self.datetime_configured = None
+                    self.streaming_active = False
+                    print("✗ Desconectado de CIAA")
+                    self.log_message("=== SSH DESCONECTADO ===")
+                    self.update_ssh_button()
+                    self.update_connection_status()
+                    self.update_streaming_button()
+                except Exception as e:
+                    self.log_message(f"ERROR al desconectar: {e}", is_error=True)
+        else:
+            # Conectar
+            self.connect_ssh()
+            self.update_ssh_button()
+            self.update_connection_status()
+    
+    def toggle_acquisition(self):
+        """Toggle entre Enable/Disable acquisition"""
+        if not self.ssh or not self.ssh.isConnected:
+            self.log_message("ERROR: No hay conexión SSH", is_error=True)
+            return
+        
+        self.acquisition_enabled = not self.acquisition_enabled
+        
+        if self.acquisition_enabled:
+            self.write_ssh(config.enable_cmd(True))
+            self.log_message("=== ACQUISITION ENABLED ===")
+        else:
+            self.write_ssh(config.enable_cmd(False))
+            self.log_message("=== ACQUISITION DISABLED ===")
+        
+        self.update_acquisition_button()
+    
+    def toggle_streaming(self):
+        """Toggle entre Launch/Stop UDP streaming"""
+        if not self.ssh or not self.ssh.isConnected:
+            self.log_message("ERROR: No hay conexión SSH", is_error=True)
+            return
+        
+        if self.streaming_active:
+            # Detener streaming
+            reply = QMessageBox.question(
+                self,
+                'Detener Streaming',
+                '¿Desea detener el streaming UDP?\n\nSe ejecutará: killall sist_adq_crc.elf',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            
+            if reply == QMessageBox.Yes:
+                cmd = 'killall sist_adq_crc.elf'
+                self.write_ssh(cmd)
+                self.streaming_active = False
+                self.log_message("=== UDP STREAMING DETENIDO ===")
+                self.update_streaming_button()
+        else:
+            # Iniciar streaming
+            reply = QMessageBox.question(
+                self,
+                'Lanzar UDP Streaming',
+                'Se iniciará el servidor UDP en CIAA en modo background.\n'
+                'NOTA: Asegúrese de haber configurado client_config en /mnt/currentVersions/\n\n'
+                '¿Continuar?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            
+            if reply == QMessageBox.Yes:
+                # Usar nohup para ejecutar en background sin bloquear SSH
+                cmd = 'cd /mnt/currentVersions && nohup ./sist_adq_crc.elf client_config > /tmp/udp_stream.log 2>&1 &'
+                self.write_ssh(cmd)
+                self.streaming_active = True
+                self.log_message("=== UDP STREAMING INICIADO (background) ===\nLogs: /tmp/udp_stream.log en CIAA")
+                self.update_streaming_button()
+    
+    def update_ssh_button(self):
+        """Actualiza el botón SSH según el estado de conexión"""
+        if hasattr(self, 'ssh_btn'):
+            if self.ssh and self.ssh.isConnected:
+                self.ssh_btn.setText("🔌 DESCONECTAR SSH")
+                self.ssh_btn.setStyleSheet("background-color: #E67E22; color: white; padding: 10px;")
+            else:
+                self.ssh_btn.setText("🔌 CONECTAR SSH")
+                self.ssh_btn.setStyleSheet("background-color: #3498DB; color: white; padding: 10px;")
+    
+    def update_acquisition_button(self):
+        """Actualiza el botón de acquisition según el estado"""
+        if hasattr(self, 'acquisition_btn'):
+            if self.acquisition_enabled:
+                self.acquisition_btn.setText("⏸ DISABLE Acquisition")
+                self.acquisition_btn.setStyleSheet("background-color: #95A5A6; color: white; padding: 10px;")
+            else:
+                self.acquisition_btn.setText("▶ ENABLE Acquisition")
+                self.acquisition_btn.setStyleSheet("background-color: #4ECDC4; color: white; padding: 10px;")
+    
+    def update_streaming_button(self):
+        """Actualiza el botón de streaming según el estado"""
+        if hasattr(self, 'streaming_btn'):
+            if self.streaming_active:
+                self.streaming_btn.setText("⏹ STOP UDP Streaming")
+                self.streaming_btn.setStyleSheet("background-color: #E74C3C; color: white; padding: 15px;")
+            else:
+                self.streaming_btn.setText("🚀 LAUNCH UDP Streaming")
+                self.streaming_btn.setStyleSheet("background-color: #2ECC71; color: white; padding: 15px;")
+    
     def reset_system(self):
         """Reset asíncrono + FIFO reset"""
         self.write_ssh(config.reset_async_cmd())
         self.write_ssh(config.reset_fifo_cmd())
         self.log_message("=== RESET COMPLETO ===")
-    
-    def enable_system(self):
-        """Habilita adquisición"""
-        self.write_ssh(config.enable_cmd(True))
-        self.log_message("=== SYSTEM ENABLED ===")
-    
-    def disable_system(self):
-        """Deshabilita adquisición"""
-        self.write_ssh(config.enable_cmd(False))
-        self.log_message("=== SYSTEM DISABLED ===")
-    
-    def launch_streaming(self):
-        """Ejecuta sist_adq.elf para streaming UDP en background"""
-        reply = QMessageBox.question(
-            self,
-            'Lanzar UDP Streaming',
-            'Se iniciará el servidor UDP en CIAA en modo background.\n'
-            'NOTA: Asegúrese de haber configurado client_config en /mnt/currentVersions/\n\n'
-            '¿Continuar?',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes
-        )
-        
-        if reply == QMessageBox.Yes:
-            # Usar nohup para ejecutar en background sin bloquear SSH
-            cmd = 'cd /mnt/currentVersions && nohup ./sist_adq_crc.elf client_config > /tmp/udp_stream.log 2>&1 &'
-            self.write_ssh(cmd)
-            self.log_message("=== UDP STREAMING INICIADO (background) ===\nLogs: /tmp/udp_stream.log en CIAA")
-            
-            QMessageBox.information(
-                self,
-                'Streaming Iniciado',
-                'UDP streaming ejecutándose en background.\n\n'
-                'Para detener:\n  ssh root@192.168.0.22 "killall sist_adq_crc.elf"\n\n'
-                'Para ver logs:\n  ssh root@192.168.0.22 "tail -f /tmp/udp_stream.log"'
-            )
     
     def execute_startup(self):
         """Ejecuta startup.elf (calibración IDELAY)"""
@@ -440,21 +608,27 @@ class MainWindow(QMainWindow):
             self.debug_combo.setCurrentIndex(1)  # CONT_NBITS
             self.data_source_combo.setCurrentIndex(2)  # CONTADOR
             self.fifo_combo.setCurrentIndex(4)  # MUX_DATA
-            self.enable_system()
+            # Enable si no está habilitado
+            if not self.acquisition_enabled:
+                self.toggle_acquisition()
         
         elif preset_name == "adc_raw":
             self.reset_system()
             self.debug_combo.setCurrentIndex(0)  # DISABLED
             self.data_source_combo.setCurrentIndex(0)  # DATOS_ADC
             self.fifo_combo.setCurrentIndex(3)  # RAW_DATA
-            self.enable_system()
+            # Enable si no está habilitado
+            if not self.acquisition_enabled:
+                self.toggle_acquisition()
         
         elif preset_name == "preprocessed":
             self.reset_system()
             self.debug_combo.setCurrentIndex(0)  # DISABLED
             self.data_source_combo.setCurrentIndex(0)  # DATOS_ADC
             self.fifo_combo.setCurrentIndex(1)  # PREPROC_DATA
-            self.enable_system()
+            # Enable si no está habilitado
+            if not self.acquisition_enabled:
+                self.toggle_acquisition()
         
         self.log_message(f"Preset '{preset_name}' aplicado correctamente.\n")
     
@@ -492,6 +666,28 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Maneja cierre de ventana"""
+        # Preguntar si detener streaming si está activo
+        if self.streaming_active and self.ssh and self.ssh.isConnected:
+            reply_stream = QMessageBox.question(
+                self,
+                'Streaming Activo',
+                '¿Desea detener el proceso sist_adq_crc.elf antes de salir?',
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Yes
+            )
+            
+            if reply_stream == QMessageBox.Cancel:
+                event.ignore()
+                return
+            elif reply_stream == QMessageBox.Yes:
+                try:
+                    cmd = 'killall sist_adq_crc.elf'
+                    self.write_ssh(cmd)
+                    self.log_message("=== UDP STREAMING DETENIDO ===")
+                except Exception as e:
+                    print(f"Error al detener streaming: {e}")
+        
+        # Confirmar cierre
         reply = QMessageBox.question(
             self,
             'Cerrar Aplicación',
