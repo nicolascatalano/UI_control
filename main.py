@@ -543,7 +543,7 @@ class MainWindow(QMainWindow):
                 self,
                 'Lanzar UDP Streaming',
                 'Se iniciará el servidor UDP en CIAA en modo background.\n'
-                'NOTA: Asegúrese de haber configurado client_config en /mnt/currentVersions/\n\n'
+                'NOTA: Asegúrese de haber configurado client_config_udp en /mnt/currentVersions/\n\n'
                 '¿Continuar?',
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.Yes
@@ -551,7 +551,7 @@ class MainWindow(QMainWindow):
             
             if reply == QMessageBox.Yes:
                 # Usar nohup para ejecutar en background sin bloquear SSH
-                cmd = 'cd /mnt/currentVersions && nohup ./sist_adq_crc.elf client_config > /tmp/udp_stream.log 2>&1 &'
+                cmd = 'cd /mnt/currentVersions && nohup ./sist_adq_crc.elf client_config_udp > /tmp/udp_stream.log 2>&1 &'
                 self.write_ssh(cmd)
                 self.streaming_active = True
                 self.log_message("=== UDP STREAMING INICIADO (background) ===\nLogs: /tmp/udp_stream.log en CIAA")

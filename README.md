@@ -171,7 +171,7 @@ Esta UI **solo controla** el hardware. Para **visualizar** datos:
 ## ⚠️ Notas Importantes
 
 - **startup.elf resetea registros:** Después de ejecutarlo, reconfigura todo.
-- **Puerto UDP:** Por defecto 9999 (configurar en client_config de CIAA).
+- **Puerto UDP:** Por defecto 9999 (configurar en client_config_udp de CIAA).
 - **Sample Rate:** Depende de CLK_DIVIDER (ver `ciaa_config.calculate_sample_rate()`).
 - **FIFO Overflow:** Normal si tasa de salida < tasa de entrada (ver flags en consola).
 
