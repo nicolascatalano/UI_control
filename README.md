@@ -9,10 +9,11 @@ Interfaz gráfica PyQt5 para control remoto del sistema de adquisición de datos
   - Debug Mode (patrones de prueba)
   - Data Source (ADC/Oscillator/Counter)
   - FIFO Input Mux (etapa del pipeline)
-  - Local Oscillator frequency (0-32.5 MHz)
-  - Beam frequencies (5 beams, 435-438 MHz)
+   - Local Oscillator frequency (0-32.5 MHz, usado cuando Data Source=OSC)
+   - Channel Mixer NCO frequencies (5 canales, 0-32.5 MHz)
 - **Control de adquisición:**
   - Reset system / FIFO
+   - Reboot de placa (Linux `reboot`)
   - Enable / Disable acquisition
   - Launch UDP streaming
 - **Consola SSH** en tiempo real
@@ -88,6 +89,13 @@ Data Source: DATOS_ADC
 FIFO Input: PREPROC_DATA
 ```
 **Uso:** Datos con beamforming y filtrado completo.
+
+### Notas de arquitectura en la UI
+
+- En la ruta ADC (`DATA_Source_Mux = DATOS_ADC`) la mezcla de banda previa usa un NCO fijo de hardware.
+- La mezcla final configurable se controla desde los 5 campos **Channel Mixer NCO**.
+- `FIFO_Input_Mux = PREPROC_DATA` muestra la salida completa del pipeline.
+- `FIFO_Input_Mux = RAW_DATA` bypass de procesamiento (salida deserializador/debug).
 
 ---
 

@@ -106,13 +106,13 @@ class FIFOInput(Enum):
     def to_string(self):
         names = {
             0: 'None',
-            1: 'Preprocessed Data (Full Pipeline)',
+            1: 'Preprocessed Data (Band FIR + Ch Mixer + Ch FIR)',
             2: 'Counter (Post-Processing)',
             3: 'Raw ADC Data (Bypass)',
             4: 'Data Mux Output',
-            5: 'Band Mixer Output',
+            5: 'Band Mixer Output (NCO fijo)',
             6: 'Band Filter Output',
-            7: 'Channel Mixer Output'
+            7: 'Channel Mixer Output (NCO configurable)'
         }
         return names[self.value]
 
@@ -282,6 +282,26 @@ def set_beam_freq_cmd(beam_number, freq_mhz):
     return axi_write_cmd(reg_addr, freq_conf)
 
 
+def set_channel_mixer_freq_cmd(channel_number, freq_mhz):
+    """
+    Configura frecuencia del NCO de la etapa final de mezcla (CH_MIXER).
+    Esta es la FRECUENCIA DEL OSCILADOR (parámetro de control).
+
+    :param channel_number: Número de canal NCO (0-4)
+    :param freq_mhz: Frecuencia de oscilación del NCO en MHz (típicamente 0-32.5)
+    :return: Comando AXI
+
+    Fórmula directa DDS (clock=260 MHz):
+    PINC = int(abs(freq_MHz) * 2^32 / 260.0)
+    
+    Ejemplo: Para mezclar -3 MHz de entrada del band mixer a ~0 Hz,
+    configura CH_MIXER_NCO = 3 MHz
+    """
+    freq_conf = int(abs(freq_mhz) * 2**32 / 260.0)
+    reg_addr = PREPROC_BASE_ADDR + BEAM_FREQ_OFFSET + channel_number * BEAM_FREQ_STRIDE
+    return axi_write_cmd(reg_addr, freq_conf)
+
+
 # ============================================================================
 # Comandos de Ejecución de Aplicaciones
 # ============================================================================
@@ -300,6 +320,25 @@ def launch_acq_cmd():
     Requiere archivo client_config con configuración de red
     """
     return f'{ELFS_LOCATION}sist_adq_crc.elf {ELFS_LOCATION}client_config\n'
+
+
+def set_beam_selector_cmd(beam_number):
+    """
+    Selecciona cuál de los 5 NCOs de canal es visible en la salida.
+    
+    :param beam_number: Número de beam/canal NCO (0-4)
+    :return: Comando AXI
+    
+    Solo el beam seleccionado tiene su salida agregada al FIFO.
+    Los otros 4 NCOs siguen procesando pero no son visibles.
+    """
+    reg_addr = PREPROC_BASE_ADDR + 0x38  # BEAM_SELECTOR offset
+    return axi_write_cmd(reg_addr, beam_number & 0x7)
+
+
+def reboot_cmd():
+    """Reinicia Linux en la placa CIAA."""
+    return 'reboot\n'
 
 
 # ============================================================================

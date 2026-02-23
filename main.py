@@ -28,7 +28,7 @@ def textClickHandler(window, qline: QLineEdit):
 
 
 class BeamFreqSetter:
-    """Widget para configurar frecuencia de un beam específico"""
+    """Widget para configurar frecuencia de NCO en la mezcla final (CH_MIXER)."""
     
     def __init__(self, window, beamNumber):
         self.window = window
@@ -41,11 +41,11 @@ class BeamFreqSetter:
         self.lineEdit.returnPressed.connect(self.apply_frequency)
         self.layout.addWidget(self.lineEdit, 1)
         
-        # Slider para ajuste visual (435-438 MHz)
+        # Slider para ajuste visual (0-32.5 MHz)
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(435000)
-        self.slider.setMaximum(438000)
-        self.slider.setValue(436000)  # Default: 436 MHz
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(32500)
+        self.slider.setValue(3000)  # Default: 3 MHz
         self.slider.valueChanged.connect(
             lambda: self.lineEdit.setText(f"{self.slider.value()/1000:.3f}")
         )
@@ -56,7 +56,7 @@ class BeamFreqSetter:
         """Calcula y escribe el comando de configuración de frecuencia"""
         try:
             freq = float(self.lineEdit.text())
-            cmd = config.set_beam_freq_cmd(self.beamNumber, freq)
+            cmd = config.set_channel_mixer_freq_cmd(self.beamNumber, freq)
             self.window.write_ssh(cmd)
         except ValueError:
             self.window.log_message(f"ERROR: Frecuencia inválida para Beam {self.beamNumber}")
@@ -236,7 +236,7 @@ class MainWindow(QMainWindow):
         # === Sección: Data Source ===
         data_source_group = QGroupBox("Data Source")
         data_source_layout = QVBoxLayout()
-        data_source_label = QLabel("Fuente de datos (ADC/Oscilador/Contador):", font=QFont("Cantarell", 10))
+        data_source_label = QLabel("Fuente de datos de entrada al pipeline (ADC/Oscilador/Contador):", font=QFont("Cantarell", 10))
         data_source_layout.addWidget(data_source_label)
         
         self.data_source_combo = QComboBox(font=QFont("Cantarell", 10))
@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         # === Sección: Local Oscillator ===
         local_osc_group = QGroupBox("Local Oscillator Frequency")
         local_osc_layout = QVBoxLayout()
-        local_osc_label = QLabel("Frecuencia del oscilador local [MHz]:", font=QFont("Utopia", 11, QFont.Bold))
+        local_osc_label = QLabel("Frecuencia oscilador local [MHz] (solo Data Source = Local Oscillator):", font=QFont("Utopia", 11, QFont.Bold))
         local_osc_layout.addWidget(local_osc_label)
         
         local_osc_h_layout = QHBoxLayout()
@@ -288,15 +288,29 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(local_osc_group)
         
         # === Sección: Beam Frequencies ===
-        beam_freq_group = QGroupBox("Beam Frequency Selector")
+        beam_freq_group = QGroupBox("Final Mixer NCO (CH_MIXER)")
         beam_freq_layout = QVBoxLayout()
-        beam_freq_label = QLabel("Frecuencias de los 5 beams [MHz]:", font=QFont("Utopia", 11, QFont.Bold))
+        
+        # Selector de Beam (qué NCO es visible)
+        beam_selector_layout = QHBoxLayout()
+        beam_selector_label = QLabel("Beam Selector (visible en salida):", font=QFont("Cantarell", 10))
+        beam_selector_layout.addWidget(beam_selector_label)
+        self.beam_selector_combo = QComboBox()
+        self.beam_selector_combo.addItems([f"Beam {i}" for i in range(5)])
+        self.beam_selector_combo.setCurrentIndex(0)
+        self.beam_selector_combo.currentIndexChanged.connect(self.set_beam_selector)
+        beam_selector_layout.addWidget(self.beam_selector_combo)
+        beam_selector_layout.addStretch()
+        beam_freq_layout.addLayout(beam_selector_layout)
+        beam_freq_layout.addSpacing(15)
+        
+        beam_freq_label = QLabel("Frecuencia NCO de mezcla final por canal [MHz]:", font=QFont("Utopia", 11, QFont.Bold))
         beam_freq_layout.addWidget(beam_freq_label)
         beam_freq_layout.addSpacing(10)
         
         self.beam_freq_setters = []
         for i in range(5):
-            beam_label = QLabel(f"Beam {i+1} frequency:", font=QFont("Cantarell", 10))
+            beam_label = QLabel(f"CH Mixer NCO {i}:", font=QFont("Cantarell", 10))
             beam_freq_layout.addWidget(beam_label)
             beam_setter = BeamFreqSetter(self, i)
             beam_freq_layout.addLayout(beam_setter.get_layout())
@@ -309,44 +323,51 @@ class MainWindow(QMainWindow):
         controls_layout.addStretch(1)
         
         # === Botones de Acción ===
-        buttons_layout = QVBoxLayout()
+        buttons_layout = QGridLayout()
+        buttons_layout.setHorizontalSpacing(8)
+        buttons_layout.setVerticalSpacing(8)
         
         # Botón SSH Connect/Disconnect
         self.ssh_btn = QPushButton("🔌 DESCONECTAR SSH")
         self.ssh_btn.setFont(QFont("Utopia", 11, QFont.Bold))
         self.update_ssh_button()
         self.ssh_btn.clicked.connect(self.toggle_ssh_connection)
-        buttons_layout.addWidget(self.ssh_btn)
-        
-        buttons_layout.addSpacing(10)
+        buttons_layout.addWidget(self.ssh_btn, 0, 0, 1, 2)
         
         # Botón Reset
         reset_btn = QPushButton("🔄 RESET System")
         reset_btn.setFont(QFont("Utopia", 12, QFont.Bold))
         reset_btn.setStyleSheet("background-color: #FF6B6B; color: white; padding: 10px;")
         reset_btn.clicked.connect(self.reset_system)
-        buttons_layout.addWidget(reset_btn)
+        buttons_layout.addWidget(reset_btn, 1, 0)
+
+        # Botón Reboot placa
+        reboot_btn = QPushButton("♻ REBOOT Board")
+        reboot_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        reboot_btn.setStyleSheet("background-color: #C0392B; color: white; padding: 10px;")
+        reboot_btn.clicked.connect(self.reboot_board)
+        buttons_layout.addWidget(reboot_btn, 1, 1)
         
         # Botón Enable/Disable (toggle)
         self.acquisition_btn = QPushButton("▶ ENABLE Acquisition")
         self.acquisition_btn.setFont(QFont("Utopia", 12, QFont.Bold))
         self.update_acquisition_button()
         self.acquisition_btn.clicked.connect(self.toggle_acquisition)
-        buttons_layout.addWidget(self.acquisition_btn)
+        buttons_layout.addWidget(self.acquisition_btn, 2, 0)
         
         # Botón Launch/Stop UDP Streaming (toggle)
         self.streaming_btn = QPushButton("🚀 LAUNCH UDP Streaming")
         self.streaming_btn.setFont(QFont("Utopia", 12, QFont.Bold))
         self.update_streaming_button()
         self.streaming_btn.clicked.connect(self.toggle_streaming)
-        buttons_layout.addWidget(self.streaming_btn)
+        buttons_layout.addWidget(self.streaming_btn, 2, 1)
         
         # Botón Calibración IDELAY
         calibrate_btn = QPushButton("🔧 Calibrar IDELAY (startup.elf)")
         calibrate_btn.setFont(QFont("Utopia", 11, QFont.Bold))
         calibrate_btn.setStyleSheet("background-color: #F39C12; color: white; padding: 12px;")
         calibrate_btn.clicked.connect(self.execute_startup)
-        buttons_layout.addWidget(calibrate_btn)
+        buttons_layout.addWidget(calibrate_btn, 3, 0, 1, 2)
         
         controls_layout.addLayout(buttons_layout)
         
@@ -598,6 +619,38 @@ class MainWindow(QMainWindow):
         cmd = config.startup_cmd()
         self.write_ssh(cmd)
         self.log_message("=== EJECUTANDO STARTUP.ELF (IDELAY calibration) ===\nESPERE 10-15 segundos...")
+
+    def reboot_board(self):
+        """Reinicia la placa via comando reboot en Linux."""
+        if not self.ssh or not self.ssh.isConnected:
+            self.log_message("ERROR: No hay conexión SSH", is_error=True)
+            return
+
+        reply = QMessageBox.question(
+            self,
+            'Reiniciar Placa',
+            '¿Desea reiniciar la placa CIAA?\n\nSe ejecutará: reboot\nLa conexión SSH se perderá temporalmente.',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.write_ssh(config.reboot_cmd())
+            self.streaming_active = False
+            self.acquisition_enabled = False
+            self.update_streaming_button()
+            self.update_acquisition_button()
+            self.log_message("=== REBOOT ENVIADO A LA PLACA ===")
+    
+    def set_beam_selector(self, beam_index):
+        """Selecciona qué NCO de canal (0-4) es visible en la salida"""
+        if not self.ssh or not self.ssh.isConnected:
+            self.log_message("ERROR: No hay conexión SSH", is_error=True)
+            return
+        
+        cmd = config.set_beam_selector_cmd(beam_index)
+        self.write_ssh(cmd)
+        self.log_message(f"Beam Selector = {beam_index} (NCO {beam_index} visible en salida)")
     
     def apply_preset(self, preset_name):
         """Aplica configuración predefinida"""
