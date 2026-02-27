@@ -24,6 +24,8 @@ ENABLE_OFFSET = 0x010             # Enable global del sistema
 EXT_TRIGGER_EN_OFFSET = 0x024     # Trigger externo
 OSC_DEBUG_FREQ_OFFSET = 0x034     # Frecuencia oscilador debug
 DEBUG_CONTROL_OFFSET = 0x080      # Control de modo debug
+DEBUG_CONTROL_CHANNEL_STRIDE = 0x04  # Separación entre registros de debug por canal
+ADC_CHANNEL_COUNT = 16            # Cantidad total de canales ADC
 FIFOFLAGSRST_OFFSET = 0x180       # Flags/status de FIFO
 
 # ============================================================================
@@ -215,12 +217,27 @@ def enable_cmd(enable=True):
 
 def set_debug_mode_cmd(mode_value):
     """
-    Configura modo de debug
+    Configura modo de debug del canal 0 (compatibilidad).
     
     :param mode_value: Valor del modo (int, ej: 0xF para counter)
     :return: Comando AXI
     """
     return axi_write_cmd(DATA_BASE_ADDR + DEBUG_CONTROL_OFFSET, mode_value)
+
+
+def set_debug_mode_all_channels_cmds(mode_value, num_channels=ADC_CHANNEL_COUNT):
+    """
+    Configura el mismo modo de debug en todos los canales ADC.
+
+    :param mode_value: Valor del modo (int, ej: 0xF para counter)
+    :param num_channels: Cantidad de canales a configurar
+    :return: Lista de comandos AXI
+    """
+    cmds = []
+    for channel in range(num_channels):
+        reg_addr = DATA_BASE_ADDR + DEBUG_CONTROL_OFFSET + channel * DEBUG_CONTROL_CHANNEL_STRIDE
+        cmds.append(axi_write_cmd(reg_addr, mode_value))
+    return cmds
 
 
 def set_fifo_input_cmd(fifo_input_value):

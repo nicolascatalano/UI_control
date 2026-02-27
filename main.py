@@ -464,8 +464,16 @@ class MainWindow(QMainWindow):
     def on_debug_changed(self):
         """Handler para cambio de Debug Mode"""
         value = self.debug_combo.currentData()
-        cmd = config.set_debug_mode_cmd(value)
-        self.write_ssh(cmd)
+        cmds = config.set_debug_mode_all_channels_cmds(value)
+        for cmd in cmds:
+            self.write_ssh(cmd)
+        self.log_message(f"Debug Mode aplicado a {len(cmds)} canales (valor=0x{value:X})")
+
+    def set_combo_to_value(self, combo, value):
+        """Setea un QComboBox según el valor real asociado (UserData)."""
+        index = combo.findData(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
     
     def on_data_source_changed(self):
         """Handler para cambio de Data Source"""
@@ -658,27 +666,27 @@ class MainWindow(QMainWindow):
         
         if preset_name == "counter":
             self.reset_system()
-            self.debug_combo.setCurrentIndex(1)  # CONT_NBITS
-            self.data_source_combo.setCurrentIndex(2)  # CONTADOR
-            self.fifo_combo.setCurrentIndex(4)  # MUX_DATA
+            self.set_combo_to_value(self.debug_combo, config.DebugMode.CONT_NBITS.value)
+            self.set_combo_to_value(self.data_source_combo, config.DataSource.CONTADOR.value)
+            self.set_combo_to_value(self.fifo_combo, config.FIFOInput.MUX_DATA.value)
             # Enable si no está habilitado
             if not self.acquisition_enabled:
                 self.toggle_acquisition()
         
         elif preset_name == "adc_raw":
             self.reset_system()
-            self.debug_combo.setCurrentIndex(0)  # DISABLED
-            self.data_source_combo.setCurrentIndex(0)  # DATOS_ADC
-            self.fifo_combo.setCurrentIndex(3)  # RAW_DATA
+            self.set_combo_to_value(self.debug_combo, config.DebugMode.DISABLED.value)
+            self.set_combo_to_value(self.data_source_combo, config.DataSource.DATOS_ADC.value)
+            self.set_combo_to_value(self.fifo_combo, config.FIFOInput.RAW_DATA.value)
             # Enable si no está habilitado
             if not self.acquisition_enabled:
                 self.toggle_acquisition()
         
         elif preset_name == "preprocessed":
             self.reset_system()
-            self.debug_combo.setCurrentIndex(0)  # DISABLED
-            self.data_source_combo.setCurrentIndex(0)  # DATOS_ADC
-            self.fifo_combo.setCurrentIndex(1)  # PREPROC_DATA
+            self.set_combo_to_value(self.debug_combo, config.DebugMode.DISABLED.value)
+            self.set_combo_to_value(self.data_source_combo, config.DataSource.DATOS_ADC.value)
+            self.set_combo_to_value(self.fifo_combo, config.FIFOInput.PREPROC_DATA.value)
             # Enable si no está habilitado
             if not self.acquisition_enabled:
                 self.toggle_acquisition()

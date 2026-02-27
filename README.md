@@ -1,3 +1,5 @@
+    - Channel Mixer NCO frequencies (5 canales, 0-32.5 MHz)
+       - **Limitación actual:** No es posible configurar la frecuencia del mixer del 5to beam. El registro de control correspondiente no tiene efecto y la causa aún no fue determinada (pendiente de depuración).
 # CIAA-ACC Control UI
 
 Interfaz gráfica PyQt5 para control remoto del sistema de adquisición de datos CIAA-ACC via SSH. **No incluye visualización de datos** (usar `gnuradio_streaming/` para eso).
@@ -130,7 +132,10 @@ Ver `ciaa_config.py` para detalles completos.
 - Confirmar IP de CIAA con `ip addr` en consola serial
 
 ### Después de `startup.elf` no funciona:
-**Problema:** `startup.elf` resetea TODOS los registros AXI a 0x00000000.
+
+**Problema:** `startup.elf` (o cualquier reset global) resetea TODOS los registros AXI a 0x00000000, incluyendo los mixers de los beams.
+
+**IMPORTANTE:** Tras cualquier reset, es obligatorio inicializar (escribir) explícitamente los registros de los mixers de los beams (NCOs de beamforming), incluso si el valor deseado es cero. Si se omite este paso, los mixers pueden quedar en estado indeterminado y la salida de los beams será incorrecta o nula hasta la próxima escritura válida.
 
 **Solución:** Reconfigurar usando preset o manualmente:
 1. Tab "Presets" → Elegir configuración
