@@ -41,10 +41,10 @@ class BeamFreqSetter:
         self.lineEdit.returnPressed.connect(self.apply_frequency)
         self.layout.addWidget(self.lineEdit, 1)
         
-        # Slider para ajuste visual (0-32.5 MHz)
+        # Slider para ajuste visual (rango efectivo con /32: -4.062 a +4.062 MHz)
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(32500)
+        self.slider.setMinimum(-4062)
+        self.slider.setMaximum(4062)
         self.slider.setValue(3000)  # Default: 3 MHz
         self.slider.valueChanged.connect(
             lambda: self.lineEdit.setText(f"{self.slider.value()/1000:.3f}")
@@ -55,7 +55,7 @@ class BeamFreqSetter:
     def apply_frequency(self):
         """Calcula y escribe el comando de configuración de frecuencia"""
         try:
-            freq = float(self.lineEdit.text())
+            freq = 32*float(self.lineEdit.text())
             cmd = config.set_channel_mixer_freq_cmd(self.beamNumber, freq)
             self.window.write_ssh(cmd)
         except ValueError:

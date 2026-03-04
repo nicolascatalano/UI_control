@@ -308,13 +308,15 @@ def set_channel_mixer_freq_cmd(channel_number, freq_mhz):
     :param freq_mhz: Frecuencia de oscilación del NCO en MHz (típicamente 0-32.5)
     :return: Comando AXI
 
-    Fórmula directa DDS (clock=260 MHz):
-    PINC = int(abs(freq_MHz) * 2^32 / 260.0)
+    Fórmula DDS (clock de referencia = 260 MHz), usando representación
+    modulo 2^32 para soportar frecuencias positivas/negativas:
+    PINC = int(freq_MHz * 2^32 / 260.0) mod 2^32
     
     Ejemplo: Para mezclar -3 MHz de entrada del band mixer a ~0 Hz,
     configura CH_MIXER_NCO = 3 MHz
     """
-    freq_conf = int(abs(freq_mhz) * 2**32 / 260.0)
+    freq_conf = int(round(freq_mhz * 2**32 / 260.0)) & 0xFFFFFFFF
+
     reg_addr = PREPROC_BASE_ADDR + BEAM_FREQ_OFFSET + channel_number * BEAM_FREQ_STRIDE
     return axi_write_cmd(reg_addr, freq_conf)
 
