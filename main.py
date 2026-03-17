@@ -6,7 +6,7 @@ vía SSH. NO incluye visualización de datos (usar gnuradio_streaming).
 """
 
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QColor, QPalette
 import sys
 import os
@@ -45,7 +45,7 @@ class BeamFreqSetter:
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setMinimum(-4062)
         self.slider.setMaximum(4062)
-        self.slider.setValue(3000)  # Default: 3 MHz
+        self.slider.setValue(0)  # Default: 3 MHz
         self.slider.valueChanged.connect(
             lambda: self.lineEdit.setText(f"{self.slider.value()/1000:.3f}")
         )
@@ -326,10 +326,12 @@ class MainWindow(QMainWindow):
         buttons_layout = QGridLayout()
         buttons_layout.setHorizontalSpacing(8)
         buttons_layout.setVerticalSpacing(8)
+        action_button_height = 44
         
         # Botón SSH Connect/Disconnect
         self.ssh_btn = QPushButton("🔌 DESCONECTAR SSH")
         self.ssh_btn.setFont(QFont("Utopia", 11, QFont.Bold))
+        self.ssh_btn.setMinimumHeight(action_button_height)
         self.update_ssh_button()
         self.ssh_btn.clicked.connect(self.toggle_ssh_connection)
         buttons_layout.addWidget(self.ssh_btn, 0, 0, 1, 2)
@@ -338,6 +340,7 @@ class MainWindow(QMainWindow):
         reset_btn = QPushButton("🔄 RESET System")
         reset_btn.setFont(QFont("Utopia", 12, QFont.Bold))
         reset_btn.setStyleSheet("background-color: #FF6B6B; color: white; padding: 10px;")
+        reset_btn.setMinimumHeight(action_button_height)
         reset_btn.clicked.connect(self.reset_system)
         buttons_layout.addWidget(reset_btn, 1, 0)
 
@@ -345,29 +348,41 @@ class MainWindow(QMainWindow):
         reboot_btn = QPushButton("♻ REBOOT Board")
         reboot_btn.setFont(QFont("Utopia", 12, QFont.Bold))
         reboot_btn.setStyleSheet("background-color: #C0392B; color: white; padding: 10px;")
+        reboot_btn.setMinimumHeight(action_button_height)
         reboot_btn.clicked.connect(self.reboot_board)
         buttons_layout.addWidget(reboot_btn, 1, 1)
+
+        # Botón Apagar placa
+        poweroff_btn = QPushButton("⏻ POWEROFF Board")
+        poweroff_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        poweroff_btn.setStyleSheet("background-color: #7B241C; color: white; padding: 10px;")
+        poweroff_btn.setMinimumHeight(action_button_height)
+        poweroff_btn.clicked.connect(self.poweroff_board)
+        buttons_layout.addWidget(poweroff_btn, 2, 0, 1, 2)
         
         # Botón Enable/Disable (toggle)
         self.acquisition_btn = QPushButton("▶ ENABLE Acquisition")
         self.acquisition_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        self.acquisition_btn.setMinimumHeight(action_button_height)
         self.update_acquisition_button()
         self.acquisition_btn.clicked.connect(self.toggle_acquisition)
-        buttons_layout.addWidget(self.acquisition_btn, 2, 0)
+        buttons_layout.addWidget(self.acquisition_btn, 3, 0)
         
         # Botón Launch/Stop UDP Streaming (toggle)
         self.streaming_btn = QPushButton("🚀 LAUNCH UDP Streaming")
         self.streaming_btn.setFont(QFont("Utopia", 12, QFont.Bold))
+        self.streaming_btn.setMinimumHeight(action_button_height)
         self.update_streaming_button()
         self.streaming_btn.clicked.connect(self.toggle_streaming)
-        buttons_layout.addWidget(self.streaming_btn, 2, 1)
+        buttons_layout.addWidget(self.streaming_btn, 3, 1)
         
         # Botón Calibración IDELAY
         calibrate_btn = QPushButton("🔧 Calibrar IDELAY (startup.elf)")
         calibrate_btn.setFont(QFont("Utopia", 11, QFont.Bold))
-        calibrate_btn.setStyleSheet("background-color: #F39C12; color: white; padding: 12px;")
+        calibrate_btn.setStyleSheet("background-color: #F39C12; color: white; padding: 10px;")
+        calibrate_btn.setMinimumHeight(action_button_height)
         calibrate_btn.clicked.connect(self.execute_startup)
-        buttons_layout.addWidget(calibrate_btn, 3, 0, 1, 2)
+        buttons_layout.addWidget(calibrate_btn, 4, 0, 1, 2)
         
         controls_layout.addLayout(buttons_layout)
         
@@ -611,10 +626,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'streaming_btn'):
             if self.streaming_active:
                 self.streaming_btn.setText("⏹ STOP UDP Streaming")
-                self.streaming_btn.setStyleSheet("background-color: #E74C3C; color: white; padding: 15px;")
+                self.streaming_btn.setStyleSheet("background-color: #E74C3C; color: white; padding: 10px;")
             else:
                 self.streaming_btn.setText("🚀 LAUNCH UDP Streaming")
-                self.streaming_btn.setStyleSheet("background-color: #2ECC71; color: white; padding: 15px;")
+                self.streaming_btn.setStyleSheet("background-color: #2ECC71; color: white; padding: 10px;")
     
     def reset_system(self):
         """Reset asíncrono + FIFO reset"""
@@ -627,6 +642,29 @@ class MainWindow(QMainWindow):
         cmd = config.startup_cmd()
         self.write_ssh(cmd)
         self.log_message("=== EJECUTANDO STARTUP.ELF (IDELAY calibration) ===\nESPERE 10-15 segundos...")
+
+    def send_power_command(self, cmd, success_message):
+        """Envía comandos de power management usando el mismo flujo que la CLI manual."""
+        self.write_ssh(cmd)
+        self.log_message(success_message)
+        QTimer.singleShot(800, self.mark_board_disconnected)
+
+    def mark_board_disconnected(self):
+        """Actualiza la UI después de un reboot/poweroff remoto."""
+        try:
+            if self.ssh:
+                self.ssh.ssh.close()
+        except Exception:
+            pass
+
+        self.ssh = None
+        self.datetime_configured = None
+        self.streaming_active = False
+        self.acquisition_enabled = False
+        self.update_ssh_button()
+        self.update_connection_status()
+        self.update_streaming_button()
+        self.update_acquisition_button()
 
     def reboot_board(self):
         """Reinicia la placa via comando reboot en Linux."""
@@ -643,12 +681,30 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.Yes:
-            self.write_ssh(config.reboot_cmd())
-            self.streaming_active = False
-            self.acquisition_enabled = False
-            self.update_streaming_button()
-            self.update_acquisition_button()
-            self.log_message("=== REBOOT ENVIADO A LA PLACA ===")
+            self.send_power_command(
+                config.reboot_cmd(),
+                "=== REBOOT ENVIADO A LA PLACA ==="
+            )
+
+    def poweroff_board(self):
+        """Apaga la placa via comando poweroff en Linux."""
+        if not self.ssh or not self.ssh.isConnected:
+            self.log_message("ERROR: No hay conexión SSH", is_error=True)
+            return
+
+        reply = QMessageBox.question(
+            self,
+            'Apagar Placa',
+            '¿Desea apagar la placa CIAA?\n\nSe ejecutará una secuencia robusta de apagado (systemctl/poweroff/shutdown).\nLa placa se apagará y la conexión SSH se perderá.',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.send_power_command(
+                config.poweroff_cmd(),
+                "=== POWEROFF ENVIADO A LA PLACA ==="
+            )
     
     def set_beam_selector(self, beam_index):
         """Selecciona qué NCO de canal (0-4) es visible en la salida"""

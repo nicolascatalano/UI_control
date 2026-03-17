@@ -360,6 +360,19 @@ def reboot_cmd():
     return 'reboot\n'
 
 
+def poweroff_cmd():
+    """Apaga Linux en la placa CIAA."""
+    return 'sync && poweroff\n'
+    # return (
+    #     "sh -c 'sync; "
+    #     "(command -v systemctl >/dev/null 2>&1 && systemctl poweroff) || "
+    #     "(/sbin/poweroff -f >/dev/null 2>&1 || /sbin/poweroff >/dev/null 2>&1) || "
+    #     "(command -v poweroff >/dev/null 2>&1 && (poweroff -f || poweroff)) || "
+    #     "(command -v shutdown >/dev/null 2>&1 && shutdown -h now) || "
+    #     "echo POWER_OFF_COMMAND_NOT_FOUND'\n"
+    # )
+
+
 # ============================================================================
 # Utilidades de Sample Rate
 # ============================================================================
